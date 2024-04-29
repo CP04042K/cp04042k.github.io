@@ -17,8 +17,7 @@ mainSections = ["posts", "section2"]
 
 disableImageOptimization = true
 
-defaultBackgroundImage = "/img/Violeto-bg1.jpg"
-# defaultFeaturedImage = "/img/Kikyo.jpg"
+defaultBackgroundImage = "/img/hellgate.jpg"
 
 # highlightCurrentMenuArea = true
 # smartTOC = true
