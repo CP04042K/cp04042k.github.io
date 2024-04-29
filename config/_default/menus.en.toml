@@ -33,14 +33,19 @@
 #  weight = 20
 
 [[subnavigation]]
- name = "Reverse Engineering"
- pageRef = "tags/reverse"
+ name = "Web"
+ pageRef = "tags/web"
+ weight = 10
+
+ [[subnavigation]]
+ name = "Pwnable"
+ pageRef = "tags/pwnable"
  weight = 10
 
 [[subnavigation]]
  name = "Write up"
  pre = "github"
- pageRef = "categories/writeup"
+ pageRef = "https://github.com/CP04042K/cTF-writeups/"
  weight = 20
 
 [[main]]
