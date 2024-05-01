@@ -1,0 +1,56 @@
+<html>
+    <head>
+        <title>XSS Sanitizer</title>
+        <meta http-equiv="Content-Security-Policy" content="navigate-to 'none'; default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; font-src https://fonts.gstatic.com; style-src 'self' 'unsafe-inline'">
+        <meta lang="UTF-8">
+        <link rel="stylesheet" href="/w1-chall/super-sanitizer/nes.min.css">
+        <link href="/w1-chall/super-sanitizer/press_start_2p.css" rel="stylesheet">
+        <style>
+            .container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: 100%;
+                margin-top: 100px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Shin24's XSS Sanitizer</h1>
+            <p>Oh nice, this sanitizer is so cool that no XSS payload can go through!</p>
+            <form id="main-form">
+                <input type="text" name="dirty" id="dirty">
+                <input type="submit" value="sanitize" onclick="set_query()">
+            </form>
+            <div class="result-container" id="result"></div>
+        </div>
+
+        <script>
+            var Module = {};
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            function set_query() {
+                urlParams.set("dirty", document.getElementById("dirty").value)
+            }
+
+            function do_sanitize() {
+                const dirty = urlParams.get("dirty")
+                const result = Module.ccall("sanitize", "string", ["string", "string"], [dirty, "<imgoner='\"'>"]);
+                
+                if (result.includes("instanceof")) {
+                    return;
+                }  
+                document.getElementById("result").innerHTML = result;
+            }
+
+            setTimeout(() => {
+                if (urlParams.get("dirty") != undefined) {
+                    do_sanitize()
+                }
+            }, 1000)
+
+        </script>
+        <script src="sanitizer.js"></script>
+    </body>
+</html>
