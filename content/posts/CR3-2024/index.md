@@ -1,7 +1,7 @@
 ---
-title: "Hacktheon 2024: Account"
-description: "Hacktheon 2024: Account"
-summary: "Hacktheon 2024: Account writeup"
+title: "CR3 CTF 2024: nodejs cơ bản cho người mới bắt đầu"
+description: "CR3 CTF 2024: nodejs cơ bản cho người mới bắt đầu"
+summary: "CR3 CTF 2024: nodejs cơ bản cho người mới bắt đầu"
 categories: ["Writeup"]
 tags: ["Pwnable", "Reverse", "Web"]
 #externalUrl: ""
