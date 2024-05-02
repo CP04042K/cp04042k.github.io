@@ -3,14 +3,13 @@ title: "CR3 CTF 2024"
 description: "CR3 CTF 2024"
 summary: "CR3 CTF 2024"
 categories: ["Writeup"]
-tags: ["Pwnable", "Reverse", "Web"]
+tags: ["Web"]
 #externalUrl: ""
-date: 2024-05-03
+date: 2024-05-02
 draft: false
 authors:
   - Shin24
 ---
-
 
 Tối hôm trước mình có làm vài bài bên CR3 CTF để warmup cho Hacktheon 2024 vào thứ 7, sau đây là writeup của mình cho 2 bài `jscripting` và `jscripting-revenge`
 
