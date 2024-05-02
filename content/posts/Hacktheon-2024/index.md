@@ -234,6 +234,7 @@ create_group()
 
 io.interactive()
 ```
+### Leak
 
 Lúc này account 2 và group 1 sẽ cùng trỏ vào một chunk, buffer `name` của account 2 lúc này sẽ là group 2. Exploit plan sẽ là leak mem thông qua group 1. Hiện tại nếu ta add account 2 vào group 1 và print all accounts của group 1 ra thì ta sẽ leak được địa chỉ của group 1, lý do là vì struct của account và group thì có vị trí của buffer trùng nhau, do đó thì khi `group_print_all_accounts` in `account->name` thực chất là đang in `group->accounts`, mà `group->accounts` lại chứa các địa chỉ của accounts do đó ta sẽ leak được mem của `mmap`-ed region. 
 
@@ -322,6 +323,8 @@ Tới đây ta sẽ tính toán được vị trí cần để leak PIE là `lea
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/b72de279-b55a-4c1a-ab19-8983c19821eb)
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/8c79d074-fbbb-41f2-be3e-8bd6a245e897)
+
+### Get shell
 
 Có PIE rồi thì ta tính được vị trí của GOT và dùng cách tương tự để leak libc, sau đó override buffer của account 2 thành địa chỉ của nơi chứa địa chỉ của các function rồi override thành onegadget (vì các function này chỉ nhận vào một byte nên không thể override thành system rồi truyền /bin/sh vào được), cuối cùng là trigger bằng một group call bất kì
 
