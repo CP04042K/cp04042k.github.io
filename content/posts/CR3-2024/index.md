@@ -15,7 +15,7 @@ Tối hôm trước mình có làm vài bài bên CR3 CTF để warmup cho Hackt
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/3e7c5b74-9ef1-4a96-9e07-07dd01ac4fca)
 
-# Jscripting
+## Jscripting
 Có thể nói đây là một nodejs sandbox dùng worker thread để chạy external code, dùng một custom `require` function chỉ cho phép gọi đến một danh sách các module giới hạn, mục tiêu sẽ là exfiltrate được flag hay secret gì đó. Module `vm` của nodejs được chọn để chạy external code, tuy nhiên module này không được tạo ra với mục đích bảo mật, đây chỉ là module giúp lập trình viên run code trong một context khác để tránh xung đột và ảnh hưởng đến các object ở context chính. Để escape ra `vm` thì việc thường làm sẽ là tìm cách leak các object từ bên ngoài thông qua các callback hoặc proxy
 ```js
 (() => { throw new Proxy({}, {
@@ -96,7 +96,7 @@ for i in range(4 ,100):
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/e8c7725e-a07c-4d66-9360-3f1927392741)
 
-# Jscripting-revenge [UPDATING...]
+## Jscripting-revenge [UPDATING...]
 
 Vì có `revenge` trong tên nên hẳn là context bài này giống bài cũ, nhưng patch lại một cái gì đó. Ta thấy lần này có một file `utils.jsc` được ship cùng và một file `bytecode.js` dùng để run file file jsc kia
 
@@ -207,7 +207,7 @@ runBytecodeFile("./utils.jsc")();
 
 Lần này lỗi không throw ra nữa, nhưng vấn đề là làm sao để ta biết được cụ thể thì `utils.js` đang làm gì?
 
-## Reversing V8 bytecode
+### Reversing V8 bytecode
 Tới đây mình quyết định trace các function call của V8
 ```
 node --trace test.js
@@ -580,7 +580,7 @@ Flag hiện ra rồi, vậy là do đệ quy quá nhiều lần exceeds default 
 
 Đầu tiên thì cứ phân tích payload này trước, đầu tiên gán một Proxy cho hàm `toString` của `Error.name`, khi `Error.name.toString` được gọi nó sẽ trigger method `apply` của proxy, khi gọi `a.stack` thì ở internal side của nodejs `prepareStackTrace` sẽ được gọi và gọi đến `Error.name.toString`, đây là để escape ra khỏi `vm`. Đoạn `throw (...)` sẽ được chạy, bằng cách handle exception ở bên ngoài thì ta có thể catch lại kết quả của câu lệnh vừa chạy và return nó về. Sau khi xem xong mình vẫn không hiểu vì sao cách của author được, hơi ảo nhưng có lẽ mình sẽ tìm hiểu và update sau
 
-## Unintendeds
+### Unintendeds
 ```
 (function(){return ({ toJSON: function() {k = arguments.callee.caller.constructor(`globalThis.storage.__defineGetter__('p', function(){ return this.secret });return btoa(globalThis.storage.p);`)()}, toString: () => k })})()
 ```
