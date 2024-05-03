@@ -96,7 +96,7 @@ for i in range(4 ,100):
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/e8c7725e-a07c-4d66-9360-3f1927392741)
 
-## Jscripting-revenge [UPDATING...]
+## Jscripting-revenge 
 
 Vì có `revenge` trong tên nên hẳn là context bài này giống bài cũ, nhưng patch lại một cái gì đó. Ta thấy lần này có một file `utils.jsc` được ship cùng và một file `bytecode.js` dùng để run file file jsc kia
 
