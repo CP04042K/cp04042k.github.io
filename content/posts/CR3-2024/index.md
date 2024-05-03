@@ -541,11 +541,11 @@ Source Position Table (size = 54)
 0x0d73e1e35449 <ByteArray[54]>
 ```
 
-Có 3 route lead đến return, ở `+160` sẽ là nơi ta cần đến vì 2 route còn lại đều là return về `undefined`, ta sẽ đi ngược từ đích về nguồn để tìm đường đến nhánh này
+Có 3 route lead đến return, ở `+160` sẽ là nơi ta cần đến vì 2 route còn lại đều là return về `undefined`.
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/d384949a-d75b-41ea-8d3b-d6022b4a85c0)
 
-Phần này sẽ check xem module đang require có phải là util không, nếu không thì nhảy đến `+160`, vậy là ta không được include `util` 
+Phần này sẽ check xem module đang require có phải là util không, nếu không thì nhảy đến `+160`, vậy là ta không được include module có tên bắt đầu bằng `util...` 
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/caf315ff-7cb8-4429-ad91-55eaa1b2c9d1)
 
