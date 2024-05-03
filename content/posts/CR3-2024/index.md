@@ -580,6 +580,8 @@ Flag hiện ra rồi, vậy là do đệ quy quá nhiều lần exceeds default 
 
 Đầu tiên thì cứ phân tích payload này trước, đầu tiên gán một Proxy cho hàm `toString` của `Error.name`, khi `Error.name.toString` được gọi nó sẽ trigger method `apply` của proxy, khi gọi `a.stack` thì ở internal side của nodejs `prepareStackTrace` sẽ được gọi và gọi đến `Error.name.toString`, đây là để escape ra khỏi `vm`. Đoạn `throw (...)` sẽ được chạy, bằng cách handle exception ở bên ngoài thì ta có thể catch lại kết quả của câu lệnh vừa chạy và return nó về. Sau khi xem xong mình vẫn không hiểu vì sao cách của author được, hơi ảo nhưng có lẽ mình sẽ tìm hiểu và update sau
 
+UPDATE: thật ra đây là vấn đề của thằng burpsuite cơ, payload mình oke =))) đm burpsuite, me go for postman
+
 ### Unintendeds
 ```
 (function(){return ({ toJSON: function() {k = arguments.callee.caller.constructor(`globalThis.storage.__defineGetter__('p', function(){ return this.secret });return btoa(globalThis.storage.p);`)()}, toString: () => k })})()
