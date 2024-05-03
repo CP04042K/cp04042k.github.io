@@ -395,7 +395,7 @@ console.log(util.inspect(globalThis.storage, { compact: false, depth: Infinity, 
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/7d7a9455-5ca1-4845-a54f-edf8b82a46f7)
 
-Hình như depth bị lớn quá, thử thêm server xem, giờ ta sẽ phải import `util` vào 
+Hình như depth bị lớn quá, thử trên server xem, giờ ta sẽ phải import `util` vào 
 
 ```
 <ref *1> Object [global] {
@@ -426,7 +426,7 @@ Hình như depth bị lớn quá, thử thêm server xem, giờ ta sẽ phải i
 secureRequire: [Function: secureRequire]
 ```
 
-Ta thấy được unction `secureRequire`, thử dùng `%DebugPrint` để xem bytecode của `secureRequire` như cách vừa nãy thử
+Ta thấy được function `secureRequire`, thử dùng `%DebugPrint` để xem bytecode của `secureRequire` như cách vừa nãy thử
 
 ```
 0xd73e1e351a1: [BytecodeArray] in OldSpace
