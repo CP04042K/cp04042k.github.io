@@ -32,7 +32,8 @@ The first thing when researching airflow is to review old CVEs. Actually, I have
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/dd7ef029-61ab-4dcb-a999-f64369b201ef)
 
-An interesting feature of Airflow is that it allows creating connections to reuse in DAGs (DAGs are like the parents of tasks), and connections will have many types corresponding to many types of providers, these providers will handle connections to the host according to each corresponding type. I remembered a bug from Son Tran about the Mysql provider where we can read any file from the server through LOAD LOCAL FILE: https://dev.mysql.com/doc/refman/8.0/en/load-data.html https://dev.mysql.com/doc/refman/8.0/en/load-data.html
+An interesting feature of Airflow is that it allows creating connections to reuse in DAGs (DAGs are like the parents of tasks), and connections will have many types corresponding to many types of providers, these providers will handle connections to the host according to each corresponding type. I remembered a bug from Son Tran about the Mysql provider where we can read any file from the server through LOAD LOCAL FILE: 
+https://dev.mysql.com/doc/refman/8.0/en/load-data.html
 
 ## Provider exploit
 
