@@ -1,3 +1,17 @@
+---
+title: "[EN] Apache Airflow not so Remote Code Execution"
+description: "Airflow researching"
+summary: "Airflow researching"
+categories: ["Research"]
+tags: ["Web"]
+#externalUrl: ""
+date: 2024-06-17
+draft: false
+authors:
+  - Shin24
+---
+
+
 Apache Airflow is a workflow management platform, meaning we can set up tasks to run in a certain order to process a type of data or let it do a certain task. Apache Airflow is within the scope of the Internet Bug Bounty on HackerOne, which pays bounties to researchers and maintainers to make the internet safer. Last week, I researched Airflow again to see if there was anything interesting. I found a few bugs, but in the end it was all rejected by Apache, so I made this post to note what I found.
 
 ## Checking out source and debug setup
