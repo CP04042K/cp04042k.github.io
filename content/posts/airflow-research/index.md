@@ -116,9 +116,3 @@ No need to say more
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/793e08b8-70fb-497c-9a9b-acab5185b737)
 
-After this discovery, I once again reported it to Apache, but the answer I received was still a NO
-
-![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/08aefd56-ab58-4ab5-beb2-26ac77fa7b00)
-
-## Conclusion
-My opinion about the bug in the RPC server is that we need to set an environment variable to turn on this experimental feature, so it is quite difficult for a user to accidentally turn it on, but a bug of an experimental feature is still very danger. It should be considered because if it is not fixed during the development phase, it will actually become a bug when it goes into production. Well, this time i learned something, maybe I will move on with another target.
