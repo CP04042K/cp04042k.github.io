@@ -225,7 +225,7 @@ Report:
 
 ## POSTVIEWER V3
 
-Thật ra mình cũng không làm client side nhiều lắm, nhưng nói chung là mình cũng khá thích nó, bài này làm mình cũng hơi mất thời gian khi đi hết từ ý tưởng ngày đến ý tưởng khác + với việc method mình dùng là race condition nên phải ngồi spam bot cả tiếng nó mới hit...
+Thật ra mình cũng không làm client side nhiều lắm, nhưng nói chung là mình cũng khá thích nó, bài này làm mình cũng hơi mất thời gian khi đi hết từ ý tưởng này đến ý tưởng khác + với việc method mình dùng là race condition nên phải ngồi spam bot cả tiếng nó mới hit...
 
 Mình sẽ nói sơ ra về bài này một chút (mình sẽ cố gắng nói sơ về context ở mỗi bài nhưng hi vọng là các bạn đã có bung đề ra và xem trước rồi, mình muốn tập trung vào phân solving hơn là mấy cái râu ria). Đầu tiên thì đây là một "client-side file upload", web sẽ lưu file vào indexedDB, khi mở file thì nội dung file sẽ được render trong một "sandboxed origin" (`https://sbx-<hash>.postviewer3-web.2024.ctfcompetition.com`) thông qua iframe, bên trong iframe đó thì sẽ tiếp tục render nội dung của file thông qua một iframe trỏ đến blob URL
 
