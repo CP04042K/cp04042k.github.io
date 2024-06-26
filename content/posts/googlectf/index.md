@@ -624,7 +624,7 @@ Một subdomain sẽ có thể share cookie với một domain hoặc subdomain 
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/168f832f-b751-4d18-8576-6670f6fe4c89)
 
-Để ý rằng tại `shim.html`, nếu ta dùng một origin có dạng `<hash1>-h641507400.0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog`, với `hash1` sẽ là hash của payload của ta. Như thế thì ta có thể lợi dụng XSS để set cookie `password=<XSS>` cho domain `0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog` và trigger XSS một lần nữa nhằm lấy flag từ `localStorage`. Tuy nhiên có một điều hơi cấn, `correctPasswordSpan` sẽ không được insert vào DOM cho đến khi password được guess đúng.
+Để ý rằng tại `shim.html`, nếu ta dùng một origin có dạng `<hash1>-h641507400.0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog`, với `hash1` sẽ là hash của payload của ta thì ta sẽ có thể thỏa điều kiện của hash check nhưng vẫn có thể XSS subdomain của sbx origin và set cookie với domain là `0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog`. Như thế thì ta có thể lợi dụng XSS để set cookie `password=<XSS>` cho domain `0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog` và trigger XSS một lần nữa nhằm lấy flag từ `localStorage`. Tuy nhiên có một điều hơi cấn, `correctPasswordSpan` sẽ không được insert vào DOM cho đến khi password được guess đúng.
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/5e4eb247-fd9e-4478-8f93-85f8543ea42f)
 
