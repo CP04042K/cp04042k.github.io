@@ -11,7 +11,7 @@ authors:
   - Shin24
 ---
 
-Cuối tuần vừa rồi, mình có chơi CTF với CoSGang a.k.a Council of Sheep và đạt được thứ hạng **#28**
+Cuối tuần vừa rồi, mình có chơi CTF với CoSGang a.k.a The Council of Sheep và đạt được thứ hạng **#28**
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/6d5221d6-763b-424a-892c-636727557efe)
 
