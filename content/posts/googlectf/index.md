@@ -288,7 +288,7 @@ Sau khi xong stage này thì nội dung của sbx origin sẽ là nội dung c�
 
 Lúc này chức năng của `shim.html` sẽ là nhận postMessage từ parent và eval data được gửi đến, bước này phục vụ cho việc parent sẽ gửi đến đoạn js lưu trong `iframeInserterHtml` để thực hiện đưa file's content vào bên trong iframe thông qua blob URL
 
-```
+```js
 const container = document.querySelector("#container");
 container.textContent = '';
 const iframe = document.createElement('iframe');
