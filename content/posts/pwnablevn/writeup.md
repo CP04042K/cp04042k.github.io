@@ -236,7 +236,7 @@ Sau khi có `syscall` rồi thì bây giờ ta chỉ cần setup 3 sigreturn fra
 from pwn import *
 from pwn import u64, u32, p64, p32, unpack, asm
 
-# PwnableVN{n0_m0r3_cSu_Wh!t3L!5T_Is_b3tT3r}
+# PwnableVN{n0_m0r3_cSu__Wh!t3L!5T_Is_b3tT3r}
 
 if args.REMOTE:
     io = remote("blacklist.pwnable.vn", 31337)
@@ -421,3 +421,7 @@ io.interactive()
 ```
 
 Một cách khác đó là ta có thể dùng syscall `mmap` để tạo ra một vùng nhớ RWX, sau đó ghi shellcode vào và chạy. 
+
+flag: `PwnableVN{n0_m0r3_cSu__Wh!t3L!5T_Is_b3tT3r}`
+
+## secure_notes v1
