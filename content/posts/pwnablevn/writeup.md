@@ -425,3 +425,5 @@ Một cách khác đó là ta có thể dùng syscall `mmap` để tạo ra mộ
 flag: `PwnableVN{n0_m0r3_cSu__Wh!t3L!5T_Is_b3tT3r}`
 
 ## secure_notes v1
+
+Bài này là một bài quản lý các note, gồm backend và một interface được chạy ở 2 process riêng biệt, interface sẽ giao tiếp với backend thông qua các Inter-Process Call. Bài này gồm 2 phần, phần 1 sẽ là tìm cách để exploit process interface và cat flag1, phần 2 sẽ là exploit process backend.  
