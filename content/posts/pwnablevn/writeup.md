@@ -714,3 +714,11 @@ note_sync(0)
 
 io.interactive()
 ```
+
+## secure_notes v2
+
+Ở bài này, mình đã xác định được bug của backend tuy nhiên do một một số việc cá nhận nên mình đã không thể tiếp tục việc exploit nó
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/140a040f-f2b9-497c-865d-3daa0a32d172)
+
+Khi thực hiện commit note lên server, việc một note có được mã hóa hay không sẽ được check dựa trên note được tìm thấy ở backend, nghĩa là nếu như note đang commit lên server và note được tìm thấy trên server có thuộc tính isencrypted khác nhau thì khi thực hiện malloc để update, sẽ có 32 byte (`SHA256_DIGEST_LENGTH`) bị overflow ra khỏi buffer, dẫn đến heap-based buffer overflow.
