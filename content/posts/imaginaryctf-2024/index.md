@@ -40,7 +40,7 @@ XOR với null thì data không đổi, do đó ta có thể pad bao nhiêu null
 
 ![image](https://github.com/user-attachments/assets/6d4760ca-c892-4e9f-9ad1-c90ef70f3b7f)
 
-Hiểu đơn giản là nếu đoạn data chưa từng xuất hiện trước đó thì zlib có cách nào để compress nó được, dẫn đến việc output sẽ dài hơn bình thường. Tiếp theo ta chỉ cần tìm độ dài lớn nhất của URI mà WSGI cho phép, pad nullbyte sao cho URI lúc đúng vừa bằng con số đó là được, ta có thể leak xem ta cần pad bao nhiêu nullbyte bằng cách tương tự, pad nullbyte tăng dần cho đến khi nó lỗi là tìm ra. 
+Hiểu đơn giản là nếu đoạn data chưa từng xuất hiện trước đó thì zlib không có cách nào để compress nó được, dẫn đến việc output sẽ dài hơn bình thường. Tiếp theo ta chỉ cần tìm độ dài lớn nhất của URI mà WSGI cho phép, pad nullbyte sao cho URI lúc đúng vừa bằng con số đó là được, ta có thể leak xem ta cần pad bao nhiêu nullbyte bằng cách tương tự, pad nullbyte tăng dần cho đến khi nó lỗi là tìm ra. 
 
 Exploit:
 
