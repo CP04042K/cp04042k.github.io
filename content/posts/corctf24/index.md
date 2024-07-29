@@ -197,5 +197,6 @@ Sau khi response đã có trong cache ta có thể trigger disk cache để xss,
 </script>
 ```
 
+Đầu tiên ta sẽ cho browser open 1 tab mới và truy cập đến `/data:text/javascript,alert(1)/iframe/view` để tạo 1 entry history, tiếp đó redirect tab đó đến URL chứa payload ở query string nhằm pollute prototype `Object` và fetch đến `/data:text/javascript,alert(1)/iframe/view`, lúc này thì ban đầu ta đã có một history của url `/data:text/javascript,alert(1)/iframe/view` rồi, cộng với việc response khi fetch đến `/data:text/javascript,alert(1)/iframe/view` lần này khác với lần đầu nếu browser sẽ invalidate cache cũ và đẩy cache mới vào, lúc này ta chỉ cần `history.go(-2)` để lùi history về 2 entry (entry của `/data:text/javascript,alert(1)/iframe/view`) và trigger disk cache đã lưu để trang được render và các script sẽ bắt đầu chạy
 ## corchat x (PENDING)
 ## repayment-pal (PENDING)
