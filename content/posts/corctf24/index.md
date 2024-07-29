@@ -136,7 +136,7 @@ Chrome có 2 loại cache chính là bf cache và disk cache:
 - back/forward cache (bf cache): cache lại snapshot hoàn chỉnh của page, trạng thái lúc đó ra sao đều sẽ được cache lại và sẽ được serve khi user back/forward trang
 - disk cache: chứa các resource được fetch về của trang, nhưng không kèm theo JavaScript heap, nghĩa là các script sẽ được execute lại. Được dùng trong một số trường hợp thay thế bf cache
 
-- More at: https://blog.arkark.dev/2022/11/18/seccon-en/#web-spanote
+More at: https://blog.arkark.dev/2022/11/18/seccon-en/#web-spanote
 
 Khi ta cho chrome thực hiện XHR request thì response được được cache lại, đưa vào disk cache, ta chỉ cần trigger disk cache khi back history lại là được
 
