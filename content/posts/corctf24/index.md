@@ -226,7 +226,7 @@ Với payload như trên ta sẽ bypass qua được các CSP dạng `script-src
 
 ![image](https://github.com/user-attachments/assets/33c9ddf3-efcf-4a42-adf0-4f8d0f9af0ed)
 
-Mình sẽ simulate lại sau khi data đi qua 1 hàm escape: 
+Mình sẽ simulate lại sau khi data đi qua 1 hàm unescape: 
 
 ![image](https://github.com/user-attachments/assets/7965e476-e920-424c-8d5e-a1b7af9abb0d)
 
