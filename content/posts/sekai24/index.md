@@ -1,5 +1,5 @@
 ---
-title: "SekaiCTF 2024: "
+title: "SekaiCTF 2024: htmlsandbox"
 description: "Quick note about some nice challenges"
 summary: "Quick note about some nice challenges"
 categories: ["Writeup"]
