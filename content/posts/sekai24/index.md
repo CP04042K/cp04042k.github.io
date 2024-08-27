@@ -5,7 +5,7 @@ summary: "Quick note about some nice challenges"
 categories: ["Writeup"]
 tags: ["Web"]
 #externalUrl: ""
-date: 2024-08-28
+date: 2024-08-27
 draft: false
 authors:
   - Shin24
