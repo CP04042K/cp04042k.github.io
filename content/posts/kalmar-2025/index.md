@@ -105,7 +105,7 @@ loadall((new Uint8Array([67, 9, 18, 117, 115, 101, 32, 115, 116, 114, 105, 112, 
 
 to store that addresses, I stored them in `b->cpool` and load them using `OP_push_const` 
 
-## Final thoughts
+## Final thoughts 
 
 The challenge is not hard, only if we do it this way, according to the challenge's author, the intended solution is more complex
 
