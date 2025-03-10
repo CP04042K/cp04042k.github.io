@@ -5,7 +5,7 @@ summary: "kalmar 2025: loadall.js"
 categories: ["Writeup"]
 tags: ["Pwn"]
 #externalUrl: ""
-date: 2025-3-10
+date: 2025-03-10
 draft: false
 authors:
   - Shin24
